@@ -1,108 +1,56 @@
 # Bulk PDF Grabber
 
-**Author:** Sandun Madhushan
+Scan any web page for PDF links, pick the ones you want, and download them
+all in one click — no more clicking "Save As" 15 times in a row.
 
-A Chrome extension (Manifest V3) that scans the current page for PDF links,
-lets you tick the ones you want (with a Select All / filter box), and
-downloads them all with one click.
+## Features
 
-## How it works
+- Detects PDF links anywhere on the page you're viewing
+- Tick individual files, or use **Select All**
+- Filter the list by filename
+- Downloads go into a `BulkPDFGrabber/` folder inside your normal Downloads
+  folder
+- Nothing is uploaded anywhere — everything happens locally in your browser
 
-- **popup.js** injects a self-contained scan function into the active tab
-  only when you open the popup (via `chrome.scripting.executeScript` +
-  the `activeTab` permission) — it does **not** run on every page you visit,
-  and it does not need broad `<all_urls>` host permissions.
-- The scan looks at `<a href>` links, and `<embed>` / `<object>` / `<iframe>`
-  elements, and keeps anything whose URL ends in `.pdf`.
-- **background.js** (a service worker) receives the selected list and calls
-  `chrome.downloads.download()` for each one, spaced ~350ms apart, saving
-  everything into a `BulkPDFGrabber/` subfolder in your Downloads folder.
+## Install
 
-## Load it locally (before publishing)
+**From the Chrome Web Store:** *(link goes here once published)*
 
-1. Open `chrome://extensions`.
-2. Turn on **Developer mode** (top right).
-3. Click **Load unpacked** and select this folder (`pdf-grabber/`).
-4. Visit any page with PDF links, click the extension icon, tick the files
-   you want, hit **Download selected**.
+**From a downloaded release (manual install):**
 
-## Known limitations worth knowing about
+1. Download the latest `.zip` from the
+   [Releases page](https://github.com/YOUR_USERNAME/bulk-pdf-grabber/releases)
+   and unzip it.
+2. Open `chrome://extensions` in Chrome.
+3. Turn on **Developer mode** (top right toggle).
+4. Click **Load unpacked** and select the unzipped folder.
+5. The extension icon will appear in your toolbar.
 
-- **Cross-origin iframes**: if a PDF is embedded inside an `<iframe>` from a
-  different domain, the script can usually still read its `src` attribute,
-  but it can't reach into the iframe's own DOM — so PDFs linked *inside*
-  a cross-origin iframe's content (not just the iframe's own src) won't be
-  found. This is a browser security boundary, not something permissions can
-  fix.
-- **Infinite-scroll / SPA pages**: new PDFs that load in after the popup
-  opened won't appear until you click the rescan (⟳) button.
-- **Chrome PDF viewer tabs**: if a PDF is already open full-page in a tab
-  (URL ends in `.pdf` and Chrome's viewer is showing it), that's not a
-  "page with links" — there's nothing to scan. Consider special-casing this:
-  if `tab.url` itself ends in `.pdf`, just offer to download that one file
-  directly instead of scanning.
+## How to use
 
-## My suggestions / possible next features
+1. Open a page that has PDF links on it.
+2. Click the Bulk PDF Grabber icon in your toolbar.
+3. Review the list of PDFs it found — everything is selected by default.
+4. Uncheck anything you don't want, or use the filter box to narrow the list.
+5. Click **Download selected**.
+6. Files will appear in `Downloads/BulkPDFGrabber/`.
 
-1. **Rate-limit safety**: already implemented (350ms stagger) — Chrome can
-   silently drop/queue downloads if you fire 15 at once with zero delay.
-2. **Smarter filenames**: currently uses the link text, falling back to the
-   URL's last segment. You could add a small "rename pattern" option, e.g.
-   `{site}-{n}.pdf`, for when link text is junk like "Download".
-3. **Persist last scan per-tab**: cache results in `chrome.storage.session`
-   keyed by tab ID so reopening the popup on the same tab doesn't re-scan.
-4. **"Only new since last visit" toggle**: store previously-downloaded URLs
-   in `chrome.storage.local` and let users skip duplicates across sessions.
-5. **Zip-and-download option**: bundle selected PDFs into a single `.zip`
-   client-side (e.g. with JSZip) instead of N separate downloads — nicer for
-   very large batches, at the cost of holding all files in memory first.
-6. **Group by domain / folder mirroring**: if scanning a page with PDFs
-   from multiple sub-sites, group them in the popup list under collapsible
-   headers.
-7. **Keyboard shortcuts**: `Ctrl+A` to select all while the popup is
-   focused, `Enter` to trigger download.
-8. **Dark mode**: match `prefers-color-scheme` for the popup.
+If PDFs load onto the page after you've already opened the popup (e.g. on an
+infinite-scroll page), click the ⟳ button to rescan.
 
-## Publishing to the Chrome Web Store
+## Permissions & privacy
 
-1. **Icons**: already included at 16/48/128px in `icons/` (simple placeholder
-   design — swap in your own branding before publishing).
-2. **Zip it**: from inside the `pdf-grabber/` folder, zip the *contents*
-   (not the folder itself) — the zip's root must contain `manifest.json`
-   directly:
-   ```
-   cd pdf-grabber
-   zip -r ../pdf-grabber.zip .
-   ```
-3. **Developer account**: go to the
-   [Chrome Web Store Developer Dashboard](https://chrome.google.com/webstore/devconsole),
-   pay the one-time $5 registration fee if you haven't already.
-4. **New item** → upload the zip.
-5. Fill in the store listing: name, short/long description, at least one
-   1280x800 (or 640x400) screenshot, and a category (e.g. "Productivity" or
-   "Tools").
-6. **Privacy practices tab**: you'll be asked to justify each permission.
-   - `activeTab` + `scripting`: "used to scan the currently open tab for PDF
-     links only when the user opens the extension popup."
-   - `downloads`: "used to save the PDF files the user selects to their
-     Downloads folder."
-   Since this extension collects no personal data and sends nothing to any
-   server, you can state "This extension does not collect or transmit user
-   data" — you technically don't need a hosted privacy policy for that
-   declaration, but the dashboard may still prompt you to add a policy URL;
-   a short one-line policy page works fine.
-7. Submit for review. Simple, single-purpose extensions like this typically
-   clear review in a few days, faster than ones requesting broad host
-   permissions — which is why this build avoids `<all_urls>`.
+- **Active tab / scripting**: only used to look at the page you're currently
+  viewing, only when you open the popup — it doesn't run in the background.
+- **Downloads**: used to save the files you select to your computer.
 
-## Testing checklist before you submit
+This extension does not collect, store, or transmit any personal data. All
+scanning and downloading happens entirely on your own device.
 
-- [ ] Test on a page with 15+ real PDF links (e.g. a university course page
-      or an academic papers index).
-- [ ] Test on a page with zero PDFs (empty state shows correctly).
-- [ ] Test filter box narrows the list.
-- [ ] Test Select All / individual unchecking / partial-selection
-      (indeterminate) state.
-- [ ] Test on `chrome://` or `file://` pages (should show the "can't be
-      scanned" message instead of erroring).
-- [ ] Confirm downloaded files land in `Downloads/BulkPDFGrabber/`.
+## Author
+
+Sandun Madhushan
+
+## License
+
+MIT — see [LICENSE](LICENSE).
