@@ -152,3 +152,10 @@ footer {
 #downloadBtn:not(:disabled):hover {
   background: #b71c1c;
 }
+
+#credit {
+  text-align: center;
+  font-size: 10px;
+  color: #aaa;
+  padding: 4px 0 8px;
+}

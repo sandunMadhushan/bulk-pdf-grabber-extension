@@ -1,5 +1,7 @@
 # Bulk PDF Grabber
 
+**Author:** Sandun Madhushan
+
 A Chrome extension (Manifest V3) that scans the current page for PDF links,
 lets you tick the ones you want (with a Select All / filter box), and
 downloads them all with one click.

@@ -3,6 +3,8 @@
   "name": "Bulk PDF Grabber",
   "version": "1.0.0",
   "description": "Scan the current page for PDF links, pick the ones you want, and download them in one click.",
+  "author": "Sandun Madhushan",
+  "homepage_url": "https://github.com/YOUR_USERNAME/bulk-pdf-grabber",
   "permissions": ["activeTab", "scripting", "downloads"],
   "action": {
     "default_popup": "popup.html",
