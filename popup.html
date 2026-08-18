@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Bulk PDF Grabber</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header>
+    <h1>Bulk PDF Grabber</h1>
+    <button id="rescanBtn" title="Re-scan this page">⟳</button>
+  </header>
+
+  <div id="controls">
+    <label class="selectAllRow">
+      <input type="checkbox" id="selectAllCheckbox" />
+      <span id="countLabel">0 PDFs found</span>
+    </label>
+    <input type="text" id="filterInput" placeholder="Filter by filename…" />
+  </div>
+
+  <div id="listContainer">
+    <ul id="pdfList"></ul>
+    <p id="emptyState">Scanning page…</p>
+  </div>
+
+  <footer>
+    <span id="statusText"></span>
+    <button id="downloadBtn" disabled>Download selected (0)</button>
+  </footer>
+  <div id="credit">Made by Sandun Madhushan</div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
