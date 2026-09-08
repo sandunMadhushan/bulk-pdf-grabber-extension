@@ -7,7 +7,7 @@
 </head>
 <body>
   <header>
-    <h1>Bulk PDF Grabber</h1>
+    <h1 id="titleText">Bulk PDF Grabber</h1>
     <button id="rescanBtn" title="Re-scan this page">⟳</button>
   </header>
 
@@ -17,11 +17,25 @@
       <span id="countLabel">0 PDFs found</span>
     </label>
     <input type="text" id="filterInput" placeholder="Filter by filename…" />
+    <div id="typeChips" class="hidden">
+      <button class="chip active" data-type="all">All</button>
+      <button class="chip" data-type="pdf">PDF</button>
+      <button class="chip" data-type="doc">Docs</button>
+      <button class="chip" data-type="slides">Slides</button>
+      <button class="chip" data-type="sheet">Sheets</button>
+      <button class="chip" data-type="unknown">Other</button>
+    </div>
+    <button id="deepScanBtn" class="hidden">Deep scan (expand + scroll page)</button>
   </div>
 
   <div id="listContainer">
     <ul id="pdfList"></ul>
     <p id="emptyState">Scanning page…</p>
+  </div>
+
+  <div id="failuresBox" class="hidden">
+    <p id="failuresHeading"></p>
+    <ul id="failuresList"></ul>
   </div>
 
   <footer>

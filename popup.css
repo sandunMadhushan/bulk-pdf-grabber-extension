@@ -159,3 +159,104 @@ footer {
   color: #aaa;
   padding: 4px 0 8px;
 }
+
+/* --- v2 additions: Classroom mode --- */
+
+.hidden { display: none !important; }
+
+#typeChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.chip {
+  border: 1px solid #ddd;
+  background: #fff;
+  color: #555;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.chip.active {
+  background: #d32f2f;
+  border-color: #d32f2f;
+  color: #fff;
+}
+
+#deepScanBtn {
+  width: 100%;
+  margin-top: 8px;
+  padding: 7px;
+  border: 1px solid #d32f2f;
+  background: #fff;
+  color: #d32f2f;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#deepScanBtn:hover { background: #fdeaea; }
+#deepScanBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.pdfBadge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 4px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.pdfBadge.pdf { background: #fde8e8; color: #b71c1c; }
+.pdfBadge.doc { background: #e8f0fe; color: #1a56c4; }
+.pdfBadge.slides { background: #fff3e0; color: #b96a00; }
+.pdfBadge.sheet { background: #e6f4ea; color: #1e7e34; }
+.pdfBadge.unknown { background: #eee; color: #777; }
+
+.pdfPostTitle {
+  font-size: 10px;
+  color: #999;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#failuresBox {
+  border-top: 1px solid #f2c2c2;
+  background: #fff8f8;
+  padding: 8px 12px;
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+#failuresHeading {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #b71c1c;
+}
+
+#failuresList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 11px;
+}
+
+#failuresList li {
+  padding: 3px 0;
+  color: #555;
+}
+
+#failuresList a {
+  color: #1a56c4;
+  text-decoration: none;
+}
+#failuresList a:hover { text-decoration: underline; }

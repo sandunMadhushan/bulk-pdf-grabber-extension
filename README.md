@@ -6,10 +6,14 @@ all in one click — no more clicking "Save As" 15 times in a row.
 ## Features
 
 - Detects PDF links anywhere on the page you're viewing
+- **New in v2:** on Google Classroom, also detects Drive/Docs/Slides/Sheets
+  attachments on Stream and Classwork posts and downloads them as PDFs, with
+  a "Deep scan" that auto-expands and scrolls the page to catch lazy-loaded
+  content
 - Tick individual files, or use **Select All**
-- Filter the list by filename
+- Filter the list by filename, or (on Classroom) by file type
 - Downloads go into a `BulkPDFGrabber/` folder inside your normal Downloads
-  folder
+  folder, organized into a subfolder per class when scanning Classroom
 - Nothing is uploaded anywhere — everything happens locally in your browser
 
 ## Install
@@ -41,11 +45,18 @@ infinite-scroll page), click the ⟳ button to rescan.
 ## Permissions & privacy
 
 - **Active tab / scripting**: only used to look at the page you're currently
-  viewing, only when you open the popup — it doesn't run in the background.
+  viewing, only when you open the popup — it doesn't run in the background
+  (except on Classroom — see below).
+- **classroom.google.com (host permission)**: needed so the extension can
+  keep watching a Classroom page for newly-loaded posts even while you
+  scroll, without you needing to reopen the popup each time.
 - **Downloads**: used to save the files you select to your computer.
+- **Storage**: used to briefly cache the list of files found on a Classroom
+  page so switching tabs and back doesn't lose your scan.
 
-This extension does not collect, store, or transmit any personal data. All
-scanning and downloading happens entirely on your own device.
+This extension does not collect, store, or transmit any personal data to any
+server. All scanning and downloading happens entirely on your own device,
+using your own already-signed-in Google session.
 
 ## Author
 
