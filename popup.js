@@ -1,4 +1,4 @@
-// ---- Generic page scan (v1 behavior, unchanged) -----------------------
+// ---- Generic page scan (v1 behavior, extended in v2.1 for LMS pages) ----
 // Runs inside the target page. Must be fully self-contained (no outside
 // references) because chrome.scripting.executeScript injects it as-is.
 function scanPageForPdfs() {
@@ -7,17 +7,36 @@ function scanPageForPdfs() {
     return clean.toLowerCase().endsWith(".pdf");
   }
 
+  // Moodle (and similar LMS platforms) don't link directly to the file --
+  // they link to a wrapper page like "mod/resource/view.php?id=123" that
+  // redirects to the real PDF. The URL alone gives no clue it's a PDF, but
+  // Moodle marks the file type with a dedicated icon next to the link
+  // (theme path contains "/f/pdf...", e.g. ".../f/pdf-24" or
+  // ".../f/pdf.svg", often with alt text like "PDF file"). Treat that icon
+  // as a second, independent signal alongside the URL check above.
+  function hasPdfIcon(a) {
+    const img = a.querySelector("img");
+    if (!img) return false;
+    const src = img.src || img.getAttribute("src") || "";
+    const alt = (img.alt || "").toLowerCase();
+    return /\/f\/pdf(?:[-_.]|$)/i.test(src) || /\bpdf\b/i.test(alt);
+  }
+
   const found = new Map();
 
   document.querySelectorAll("a[href]").forEach((a) => {
+    let url;
     try {
-      const url = new URL(a.getAttribute("href"), location.href).href;
-      if (isPdfUrl(url)) {
-        const label = (a.textContent || "").trim();
-        found.set(url, label || decodeURIComponent(url.split("/").pop()));
-      }
+      url = new URL(a.getAttribute("href"), location.href).href;
     } catch (e) {
-      /* ignore malformed URLs */
+      return; // ignore malformed URLs
+    }
+    const label = (a.textContent || "").trim();
+    if (isPdfUrl(url)) {
+      found.set(url, label || decodeURIComponent(url.split("/").pop()));
+    } else if (label && hasPdfIcon(a)) {
+      // e.g. a Moodle "mod/resource/view.php?id=123" wrapper link
+      found.set(url, label);
     }
   });
 
@@ -149,14 +168,17 @@ async function scanGeneric(tab) {
     func: scanPageForPdfs,
   });
   const found = (result && result.result) || [];
-  items = found.map((f, i) => ({
-    key: f.url,
-    filename: suggestFilename(f.label, i),
-    type: "pdf",
-    postTitle: "",
-    selected: true,
-    payload: { url: f.url },
-  }));
+  items = found.map((f, i) => {
+    const filename = suggestFilename(f.label, i);
+    return {
+      key: f.url,
+      filename,
+      type: "pdf",
+      postTitle: "",
+      selected: true,
+      payload: { url: f.url, filename, viewUrl: f.url },
+    };
+  });
 }
 
 // ---- Classroom scanning ----------------------------------------------------
