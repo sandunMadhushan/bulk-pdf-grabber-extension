@@ -15,51 +15,65 @@ public-facing README.
   `chrome.downloads.download()` for each one, spaced ~350ms apart, saving
   everything into a `BulkPDFGrabber/` subfolder in your Downloads folder.
 
-## v2: Classroom/Drive detection — things to verify live
+## v2: Classroom/Drive detection — validated against a live page
 
-I built this without being able to log into an actual Google Classroom
-account, so the detection logic deliberately avoids depending on Classroom's
-CSS class names (which are minified and change across deploys) and instead
-keys off stable signals: URL shape, `aria-expanded`, and heading roles. That
-said, these are the specific things to check against a real Classroom
-Stream/Classwork page before shipping:
+I was able to check this against a real Classroom class (ICT3215) via a
+connected browser session. What that confirmed, and what's still inferred:
 
-1. **File-type detection accuracy** (`guessType` in `content-classroom.js`).
-   For links that are `drive.google.com/file/d/...` (ambiguous — could be a
-   PDF, image, video, zip, anything), it currently looks for a mimetype
-   string inside a nearby `<img src>` icon, then falls back to checking if
-   the visible label ends in `.pdf`. Run `window.__pdfGrabberDebug()` in the
-   Classroom page's console and check the `type` column against what you
-   know each attachment actually is. If accuracy is poor, the fastest fix is
-   usually widening what counts as "nearby" (the `card` selector) or
-   inspecting one real attachment's DOM in DevTools to find a better icon
-   selector.
-2. **Post/assignment title extraction** (`nearestHeadingText`). This walks
-   up from the link looking for the nearest `role="heading"` or `<h1-6>`.
-   Classroom does use heading roles for post titles, but confirm the text
-   it captures isn't something unrelated (like the class name repeated on
-   every item, or truncated/empty for some posts).
-3. **The virus-scan-interstitial fallback** — `drive.usercontent.google.com/
-   download?id=...&export=download&confirm=t`. This is the current (2024+)
-   replacement for Drive's old `confirm=<token>` cookie flow, but Google has
-   changed this mechanism more than once over the years, so treat it as the
-   least stable part of this build. `background.js` already checks the
-   downloaded file's MIME type and retries/fails over if it detects an HTML
-   page instead of a real file, and the popup surfaces a manual "open in
-   Drive" link for anything that ultimately fails — but if you start seeing
-   a lot of failures, that endpoint having changed again is the first thing
-   to check.
-4. **Auto-expand safety** (`expandSafeToggles`). It clicks any
-   `[aria-expanded="false"]` element whose label doesn't match an unsafe-word
-   blocklist (submit, delete, turn in, etc.). Skim that blocklist against
-   whatever labels your real Classroom UI uses before relying on it — it's a
-   best-effort safety net, not a guarantee.
-5. **Auto-scroll container**. It scrolls `window`/`document.body` rather
-   than a specific Classroom container, since I don't know whether Classroom
-   scrolls the whole page or an inner `overflow: auto` div. If posts aren't
-   loading during Deep scan, Classroom is probably using an inner scroll
-   container — find it in DevTools and swap the `window.scrollBy` call in
-   `autoScroll()` for `container.scrollBy`.
+**Confirmed and now built accordingly:**
+
+1. **File type is in the aria-label, not just the icon.** Every attachment
+   link carries `aria-label="Attachment: PDF: <filename>.pdf"` (confirmed
+   exact wording for PDF). `content-classroom.js` now parses this directly
+   (`parseAriaLabel` / `typeFromLabel`) as the primary signal, with the old
+   icon-mimetype guess kept only as a fallback for attachments that somehow
+   lack the label.
+2. **Post captions are plain text, not headings.** My original
+   `nearestHeadingText` (looking for `role="heading"`/`<h1-6>`) would have
+   returned nothing on a real page — Stream posts render their caption as
+   plain sibling text next to the attachment grid, with no heading markup at
+   all. Replaced with `nearestCaptionText`, which walks up from the
+   attachment link and takes the first ancestor with non-empty text once
+   nested attachment-link text is stripped out. Verified correct on both a
+   single-attachment post and a 5-attachment post (correctly returned
+   "Practical Labsheets" for all five, not five different values).
+3. **Lazy loading is real and matters.** On page load, only attachments in
+   posts already in the viewport exist in the DOM — scrolling down caused
+   entirely new `<a aria-label="Attachment: ...">` elements to appear that
+   weren't there before. This confirms the Deep scan approach (auto-scroll +
+   MutationObserver) is necessary, not just defensive over-engineering.
+
+**Still inferred, not empirically confirmed:**
+
+- The exact aria-label wording for Google Docs/Slides/Sheets attachments
+  (assumed to follow the same `"Attachment: <Type>: <filename>"` pattern,
+  e.g. `"Attachment: Google Docs: ..."`, based on Google's general
+  accessibility conventions, but I only had PDF attachments to check against
+  in this account). If detection misses Docs/Slides/Sheets specifically,
+  run `window.__pdfGrabberDebug()` on a post that has one and check the
+  actual `aria-label` string, then adjust the regex in `typeFromLabel`.
+- The Classwork tab specifically — the class I checked had no assignments
+  posted yet, so attachment detection there is untested (Stream attachments
+  use the same underlying attachment-card component in Classroom generally,
+  so it should work the same way, but worth a quick check).
+- Whether Classroom ever scrolls an inner container instead of the whole
+  page — I didn't hit this in my check, but `autoScroll()` still only
+  scrolls `window` (see below).
+
+**Not exercised in this check (didn't actually trigger a download or hit an
+`aria-expanded` toggle):**
+
+- The virus-scan-interstitial fallback (`drive.usercontent.google.com/
+  download?id=...&export=download&confirm=t`) — still the least proven part
+  of this build. `background.js` checks the completed download's MIME type
+  and retries/reports failure if it got HTML instead of a PDF, and the popup
+  surfaces a manual "open in Drive" link for anything that ultimately fails
+  — but if failures are common, this endpoint having changed again is the
+  first thing to check.
+- `expandSafeToggles()`'s unsafe-word blocklist — the class I checked didn't
+  have any collapsed/expandable sections to test against, so the blocklist
+  (submit, delete, turn in, etc.) hasn't been exercised against real button
+  labels yet.
 
 ## Known limitations
 

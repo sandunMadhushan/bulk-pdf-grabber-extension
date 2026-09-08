@@ -44,19 +44,46 @@
     return name.replace(/[\\/:*?"<>|]/g, "_").trim().slice(0, 150);
   }
 
-  function nearestHeadingText(el) {
-    let node = el;
-    for (let depth = 0; node && depth < 10; depth++, node = node.parentElement) {
-      const heading = node.querySelector?.(
-        '[role="heading"], h1, h2, h3, h4, h5, h6'
-      );
-      // Only accept a heading that isn't just the link's own container text
-      if (heading && heading.textContent?.trim() && !node.contains(el) === false) {
-        const text = heading.textContent.trim();
-        if (text.length > 0 && text.length < 200) return text;
-      }
-    }
-    return null;
+  // CONFIRMED against a live Classroom Stream page: the attachment <a> itself
+  // carries an aria-label of the form "Attachment: <TYPE>: <filename>", e.g.
+  // `aria-label="Attachment: PDF: ICT3215 Quiz Group Allocation.pdf"`. This is
+  // far more reliable than guessing from an icon's image URL, so it's the
+  // primary signal now. The icon path (e.g.
+  // ".../mediatype/icon_3_pdf_x32.png") is kept as a fallback in case a given
+  // attachment ever lacks the aria-label.
+  const ARIA_LABEL_RE = /^Attachment:\s*([^:]+):\s*(.+)$/i;
+
+  function parseAriaLabel(anchorEl) {
+    const label = anchorEl.getAttribute("aria-label") || "";
+    const m = label.match(ARIA_LABEL_RE);
+    if (!m) return null;
+    return { typeLabel: m[1].trim().toLowerCase(), filename: m[2].trim() };
+  }
+
+  function typeFromLabel(typeLabel) {
+    if (!typeLabel) return null;
+    if (/pdf/.test(typeLabel)) return "pdf";
+    if (/doc/.test(typeLabel)) return "doc"; // "Google Docs" / "Doc"
+    if (/slide/.test(typeLabel)) return "slides";
+    if (/sheet/.test(typeLabel)) return "sheet";
+    return null; // image, video, zip, etc. -- not something we auto-classify
+  }
+
+  // Fallback for attachments with no usable aria-label: inspect the nearby
+  // icon's image URL for a mimetype/media-type hint.
+  function guessTypeFromIcon(anchorEl) {
+    const card =
+      anchorEl.closest('[role="listitem"], li, div[role="button"]') ||
+      anchorEl.parentElement ||
+      anchorEl;
+    const img = card.querySelector?.("img[src]");
+    if (!img) return "unknown";
+    const src = img.src || "";
+    if (/mediatype\/icon_3_pdf|application%2Fpdf|application\/pdf/i.test(src)) return "pdf";
+    if (/vnd\.google-apps\.document/i.test(src)) return "doc";
+    if (/vnd\.google-apps\.presentation/i.test(src)) return "slides";
+    if (/vnd\.google-apps\.spreadsheet/i.test(src)) return "sheet";
+    return "unknown";
   }
 
   function classContext() {
@@ -66,43 +93,41 @@
     return parts.length > 1 ? parts[parts.length - 1] : parts[0] || "Classroom";
   }
 
-  function guessType(anchorEl, ref) {
-    if (ref.kind !== "drive") return ref.kind; // doc/slides/sheet already certain from URL
-
-    const card =
-      anchorEl.closest('[role="listitem"], li, div[role="button"]') ||
-      anchorEl.parentElement ||
-      anchorEl;
-
-    const img = card.querySelector?.("img[src]");
-    if (img) {
-      const src = img.src || "";
-      if (/application%2Fpdf|application\/pdf/i.test(src)) return "pdf";
-      if (/vnd\.google-apps\.document/i.test(src)) return "doc";
-      if (/vnd\.google-apps\.presentation/i.test(src)) return "slides";
-      if (/vnd\.google-apps\.spreadsheet/i.test(src)) return "sheet";
+  // CONFIRMED against a live Classroom Stream page: post captions are NOT
+  // marked up with role="heading" or <h1-6> -- they're plain text siblings
+  // of the attachment card grid. The reliable way to find one is to walk up
+  // from the attachment link and take the first ancestor whose text content
+  // (with any nested attachment-link text stripped out) is non-empty --
+  // that's consistently the post's caption/body, one level above the
+  // attachment card grid, verified on both single- and multi-attachment
+  // posts.
+  function nearestCaptionText(el) {
+    let node = el.parentElement;
+    for (let depth = 0; node && depth < 10; depth++, node = node.parentElement) {
+      const clone = node.cloneNode(true);
+      clone.querySelectorAll('a[aria-label^="Attachment"]').forEach((n) => n.remove());
+      const text = clone.textContent.replace(/\s+/g, " ").trim();
+      if (text.length > 0) {
+        // Guard against walking too far and grabbing the whole post's
+        // metadata block ("Post by ... Created ... visible to ...").
+        if (/^Post by /i.test(text)) return null;
+        return text.length > 120 ? text.slice(0, 117) + "…" : text;
+      }
     }
-
-    const label = (
-      anchorEl.getAttribute("aria-label") ||
-      card.textContent ||
-      anchorEl.textContent ||
-      ""
-    ).trim();
-    if (/\.pdf\b/i.test(label)) return "pdf";
-
-    return "unknown"; // could be an image, zip, video, etc. — let the user decide
+    return null;
   }
 
-  function displayName(anchorEl, ref, type) {
-    const label = (
-      anchorEl.getAttribute("aria-label") ||
-      anchorEl.textContent ||
-      ""
-    ).trim();
-    let base = label || `attachment-${ref.id.slice(0, 8)}`;
+  function guessType(anchorEl, ref, parsedLabel) {
+    if (ref.kind !== "drive") return ref.kind; // doc/slides/sheet already certain from URL
+    const fromLabel = parsedLabel && typeFromLabel(parsedLabel.typeLabel);
+    return fromLabel || guessTypeFromIcon(anchorEl);
+  }
+
+  function displayName(anchorEl, ref, type, parsedLabel) {
+    let base = parsedLabel?.filename || (anchorEl.textContent || "").trim();
+    if (!base) base = `attachment-${ref.id.slice(0, 8)}`;
     base = base.replace(/\.pdf$/i, "");
-    const ext = type === "pdf" ? ".pdf" : type === "unknown" ? "" : ".pdf";
+    const ext = type === "unknown" ? "" : ".pdf";
     return sanitize(base) + ext;
   }
 
@@ -119,14 +144,15 @@
       if (!ref) return;
       if (found.has(ref.id)) return;
 
-      const type = guessType(a, ref);
+      const parsedLabel = parseAriaLabel(a);
+      const type = guessType(a, ref, parsedLabel);
       found.set(ref.id, {
         id: ref.id,
         kind: ref.kind,
         type, // 'pdf' | 'doc' | 'slides' | 'sheet' | 'unknown'
-        postTitle: nearestHeadingText(a) || "Untitled post",
+        postTitle: nearestCaptionText(a) || "Untitled post",
         className: classContext(),
-        filename: displayName(a, ref, type),
+        filename: displayName(a, ref, type, parsedLabel),
       });
     });
     return Array.from(found.values());
