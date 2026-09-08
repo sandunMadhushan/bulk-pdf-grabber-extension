@@ -5,7 +5,9 @@ all in one click — no more clicking "Save As" 15 times in a row.
 
 ## Features
 
-- Detects PDF links anywhere on the page you're viewing
+- Detects PDF links anywhere on the page you're viewing, including LMS
+  wrapper links (e.g. Moodle's `mod/resource/view.php?id=...`) that don't
+  end in `.pdf` but show a PDF file-type icon
 - **New in v2:** on Google Classroom, also detects Drive/Docs/Slides/Sheets
   attachments on Stream and Classwork posts and downloads them as PDFs, with
   a "Deep scan" that auto-expands and scrolls the page to catch lazy-loaded

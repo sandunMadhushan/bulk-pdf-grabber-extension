@@ -77,6 +77,18 @@ connected browser session. What that confirmed, and what's still inferred:
 
 ## Known limitations
 
+- **Moodle "Embed" display mode**: if a Moodle admin configures a resource
+  to display embedded (inline PDF viewer on the resource page) rather than
+  force-download, the wrapper URL might return an HTML page instead of the
+  raw PDF. `background.js`'s existing MIME-type check (originally built for
+  the Drive interstitial) also catches this case and reports it as a
+  failure with a manual "open" link, but it hasn't been tested against a
+  real Moodle instance set to Embed mode — only against `oulms.ou.ac.lk`'s
+  default (which redirects straight to the file and works cleanly).
+- **`mod_folder` resources** (Moodle's "Folder" activity, shown with a
+  folder icon) aren't expanded — they contain multiple files behind a
+  second page, out of scope for the current icon-based single-link
+  detection. Worth a v3 feature if these come up often.
 - **Cross-origin iframes**: if a PDF is embedded inside an `<iframe>` from a
   different domain, the script can usually still read its `src` attribute,
   but it can't reach into the iframe's own DOM — so PDFs linked *inside*
