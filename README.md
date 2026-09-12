@@ -68,6 +68,8 @@ This extension does not collect, store, or transmit any personal data to any
 server. All scanning and downloading happens entirely on your own device,
 using your own already-signed-in Google session.
 
+Full policy: [PRIVACY.md](PRIVACY.md)
+
 ## Author
 
 [Sandun Madhushan](https://github.com/sandunMadhushan)
