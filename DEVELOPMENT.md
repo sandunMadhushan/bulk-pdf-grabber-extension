@@ -136,6 +136,42 @@ connected browser session. What that confirmed, and what's still inferred:
   if `tab.url` itself ends in `.pdf`, just offer to download that one file
   directly instead of scanning.
 
+## v2.3.0: zip-bundling for 10+ files
+
+- Selecting 10+ files and clicking Download now bundles them into a single
+  `.zip` (`BulkPDFGrabber/BulkPDFGrabber-<timestamp>.zip`) instead of
+  triggering N separate downloads. Below that threshold, behavior is
+  unchanged (N individual downloads via `chrome.downloads.download`, as
+  before).
+- Bundling needs the actual file *bytes*, not just a save-to-disk trigger,
+  so `background.js` uses `fetch()` for this path instead of
+  `chrome.downloads.download()`. A background-page fetch to a cross-origin
+  URL needs host permission for that origin or it fails/returns an opaque
+  response — and the possible origins aren't knowable ahead of time (any
+  LMS domain, plus Drive/Docs export endpoints for Classroom) — so
+  `"<all_urls>"` is declared as `optional_host_permissions` in
+  manifest.json, and `popup.js` requests it via `chrome.permissions.request`
+  right when the user clicks Download with 10+ files selected (must be a
+  direct result of the click for Chrome to show the prompt). If the user
+  denies it, this falls back to the normal per-file download path rather
+  than failing outright.
+- The ZIP itself is written by hand in `background.js` (`buildZip()` /
+  `crc32()` / `dosDateTime()`) using the "store" (no compression) method —
+  no external library. Two reasons: MV3 extensions can't load remote code
+  (no CDN, so something like JSZip would need to be vendored/bundled
+  in-repo anyway), and PDFs are already internally compressed, so "store"
+  loses nothing over "deflate" while keeping the whole thing dependency-free.
+  Verified by generating a zip with nested folder paths and extracting it
+  with Windows' native `Expand-Archive` — files and content matched.
+- Duplicate filenames within the same zip (e.g. two attachments named
+  `Notes.pdf` in different `classFolder`s do NOT collide since the folder
+  path is part of the zip entry name, but two in the *same* folder could)
+  are disambiguated with a `Notes (2).pdf`-style suffix (`uniqueZipName()`),
+  same idea as `conflictAction: "uniquify"` on the individual-download path.
+- Files that fail to fetch (interstitial, HTTP error, etc.) are excluded
+  from the zip and reported through the existing failures list/manual-open
+  fallback, same as a failed individual download.
+
 ## Possible next features
 
 1. **Smarter filenames**: currently uses the link text, falling back to the
@@ -145,15 +181,12 @@ connected browser session. What that confirmed, and what's still inferred:
    keyed by tab ID so reopening the popup on the same tab doesn't re-scan.
 3. **"Only new since last visit" toggle**: store previously-downloaded URLs
    in `chrome.storage.local` and let users skip duplicates across sessions.
-4. **Zip-and-download option**: bundle selected PDFs into a single `.zip`
-   client-side (e.g. with JSZip) instead of N separate downloads — nicer for
-   very large batches, at the cost of holding all files in memory first.
-5. **Group by domain / folder mirroring**: if scanning a page with PDFs
+4. **Group by domain / folder mirroring**: if scanning a page with PDFs
    from multiple sub-sites, group them in the popup list under collapsible
    headers.
-6. **Keyboard shortcuts**: `Ctrl+A` to select all while the popup is
+5. **Keyboard shortcuts**: `Ctrl+A` to select all while the popup is
    focused, `Enter` to trigger download.
-7. **Dark mode**: match `prefers-color-scheme` for the popup.
+6. **Dark mode**: match `prefers-color-scheme` for the popup.
 
 ## Publishing to the Chrome Web Store
 

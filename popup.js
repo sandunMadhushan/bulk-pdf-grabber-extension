@@ -332,24 +332,66 @@ typeChipsEl.addEventListener("click", (e) => {
   updateFooterAndSelectAll();
 });
 
-downloadBtn.addEventListener("click", () => {
+// 10+ files download as a single .zip instead of N separate files -- needs
+// the actual bytes (not just a save-to-disk trigger), so background.js has
+// to fetch() them, which needs host permission for wherever they're hosted.
+// Origins vary per page (any LMS domain, or Drive/Docs export endpoints for
+// Classroom), so this is requested on demand right here -- must happen
+// synchronously in response to the click for Chrome to allow the prompt.
+const ZIP_THRESHOLD = 10;
+
+function originsForPayloads(payloads) {
+  const origins = new Set();
+  payloads.forEach((p) => {
+    if (p.url) {
+      try {
+        origins.add(`${new URL(p.url).origin}/*`);
+      } catch (e) {
+        /* ignore */
+      }
+    } else if (p.type) {
+      origins.add("https://drive.google.com/*");
+      origins.add("https://drive.usercontent.google.com/*");
+      origins.add("https://docs.google.com/*");
+    }
+  });
+  return Array.from(origins);
+}
+
+downloadBtn.addEventListener("click", async () => {
   const selected = items.filter((it) => it.selected);
   if (selected.length === 0) return;
   downloadBtn.disabled = true;
   failuresBox.classList.add("hidden");
-  statusEl.textContent = `Downloading 0 / ${selected.length}…`;
 
-  chrome.runtime.sendMessage(
-    { type: "DOWNLOAD_PDFS", files: selected.map((it) => it.payload) },
-    () => {}
-  );
+  const payloads = selected.map((it) => it.payload);
+  let asZip = false;
+
+  if (selected.length >= ZIP_THRESHOLD) {
+    statusEl.textContent = "Requesting permission to bundle as a zip…";
+    try {
+      asZip = await chrome.permissions.request({ origins: originsForPayloads(payloads) });
+    } catch (e) {
+      asZip = false;
+    }
+  }
+
+  statusEl.textContent = asZip
+    ? `Fetching 0 / ${selected.length} for zip…`
+    : `Downloading 0 / ${selected.length}…`;
+  chrome.runtime.sendMessage({ type: "DOWNLOAD_PDFS", files: payloads, asZip }, () => {});
 });
 
 chrome.runtime.onMessage.addListener((msg, sender) => {
   if (msg.type === "DOWNLOAD_PROGRESS") {
-    statusEl.textContent = `Downloading ${msg.done} / ${msg.total}…`;
+    statusEl.textContent = msg.asZip
+      ? `Fetching ${msg.done} / ${msg.total} for zip…`
+      : `Downloading ${msg.done} / ${msg.total}…`;
   } else if (msg.type === "DOWNLOAD_COMPLETE") {
-    statusEl.textContent = `Done — ${msg.done - msg.failed} saved${msg.failed ? `, ${msg.failed} failed` : ""}.`;
+    const succeeded = msg.done - msg.failed;
+    statusEl.textContent = msg.asZip
+      ? `Done — ${succeeded} file${succeeded === 1 ? "" : "s"} zipped${msg.failed ? `, ${msg.failed} failed` : ""}.`
+      : `Done — ${succeeded} saved${msg.failed ? `, ${msg.failed} failed` : ""}.`;
     updateFooterAndSelectAll();
 
     if (msg.failed > 0 && msg.failures && msg.failures.length) {
