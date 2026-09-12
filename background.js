@@ -257,6 +257,7 @@ async function fetchFileBytes(file) {
       const data = new Uint8Array(await res.arrayBuffer());
       return { ok: true, data };
     } catch (e) {
+      console.warn("Bulk PDF Grabber: fetch failed for", url, e);
       lastReason = "fetch-failed";
     }
   }
@@ -303,6 +304,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   const files = message.files || [];
   (message.asZip ? downloadAsZip(files) : downloadIndividually(files)).catch((e) => {
+    console.error("Bulk PDF Grabber: download run crashed", e);
     chrome.runtime
       .sendMessage({ type: "DOWNLOAD_COMPLETE", done: 0, failed: files.length, failures: [], asZip: !!message.asZip })
       .catch(() => {});
