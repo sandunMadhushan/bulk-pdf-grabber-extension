@@ -292,13 +292,54 @@ async function fetchFileBytesInTab(tabId, file) {
   return { ok: false, reason: lastReason };
 }
 
-// A base64 data: URL works everywhere chrome.downloads.download runs (no
-// URL.createObjectURL needed -- see the v2.3.2 note above), but it doesn't
-// scale to a large combined zip: turning the whole thing into one giant JS
-// string blows past the engine's max string length (confirmed live: 523
-// real PDFs -- several hundred MB combined -- threw "RangeError: Invalid
-// string length" here). So entries are grouped into multiple zip parts,
-// each capped well under that limit, downloaded one at a time.
+// Preferred path: hand the zip Blob to an offscreen document (a real DOM
+// context the service worker doesn't have) and let IT call
+// URL.createObjectURL -- a Blob URL never needs to become one giant string,
+// so this has no realistic size ceiling, unlike the base64 data: URL
+// fallback below. See offscreen.js and the v2.4.0 DEVELOPMENT.md note.
+let offscreenDocumentReady = null;
+
+async function ensureOffscreenDocument() {
+  if (await chrome.offscreen.hasDocument()) return;
+  if (!offscreenDocumentReady) {
+    offscreenDocumentReady = chrome.offscreen
+      .createDocument({
+        url: "offscreen.html",
+        reasons: ["BLOBS"],
+        justification: "Create a Blob URL for the generated zip file so chrome.downloads.download can save it.",
+      })
+      .finally(() => {
+        offscreenDocumentReady = null;
+      });
+  }
+  await offscreenDocumentReady;
+}
+
+async function downloadZipViaOffscreen(entries, filename) {
+  const zipBytes = new Uint8Array(await buildZip(entries).arrayBuffer());
+  await ensureOffscreenDocument();
+  const response = await chrome.runtime.sendMessage({
+    type: "OFFSCREEN_MAKE_BLOB_URL",
+    bytes: zipBytes,
+    mimeType: "application/zip",
+  });
+  if (!response || !response.url) throw new Error("offscreen document did not return a blob URL");
+  await new Promise((resolve) => {
+    chrome.downloads.download({ url: response.url, filename, saveAs: false, conflictAction: "uniquify" }, () => resolve());
+  });
+  // Give the download manager a moment to start reading the blob before
+  // revoking it and letting the offscreen document close.
+  await sleep(1000);
+  chrome.runtime.sendMessage({ type: "OFFSCREEN_REVOKE_BLOB_URL", url: response.url }).catch(() => {});
+}
+
+// Fallback for browsers where chrome.offscreen isn't available: a base64
+// data: URL works everywhere chrome.downloads.download runs, but doesn't
+// scale to a large combined zip -- turning the whole thing into one giant
+// JS string blows past the engine's max string length (confirmed live:
+// 523 real PDFs, several hundred MB combined, threw "RangeError: Invalid
+// string length"). So entries are grouped into multiple zip parts, each
+// capped well under that limit, downloaded one at a time.
 const MAX_ZIP_PART_BYTES = 60 * 1024 * 1024; // ~60MB of file data per zip part
 
 function groupEntriesForZipParts(entries) {
@@ -318,7 +359,7 @@ function groupEntriesForZipParts(entries) {
   return groups;
 }
 
-async function downloadZipPart(entries, filename) {
+async function downloadZipPartViaDataUrl(entries, filename) {
   const zipBytes = new Uint8Array(await buildZip(entries).arrayBuffer());
   let binary = "";
   const CHUNK = 0x8000;
@@ -329,6 +370,22 @@ async function downloadZipPart(entries, filename) {
   await new Promise((resolve) => {
     chrome.downloads.download({ url: zipUrl, filename, saveAs: false, conflictAction: "uniquify" }, () => resolve());
   });
+}
+
+async function downloadEntriesAsZip(entries, stamp) {
+  const singleFilename = `${SUBFOLDER}/BulkPDFGrabber-${stamp}.zip`;
+  try {
+    await downloadZipViaOffscreen(entries, singleFilename);
+    return;
+  } catch (e) {
+    console.warn("Bulk PDF Grabber: offscreen zip download failed, falling back to split data: URLs", e);
+  }
+
+  const parts = groupEntriesForZipParts(entries);
+  for (let i = 0; i < parts.length; i++) {
+    const suffix = parts.length > 1 ? `-part${i + 1}of${parts.length}` : "";
+    await downloadZipPartViaDataUrl(parts[i], `${SUBFOLDER}/BulkPDFGrabber-${stamp}${suffix}.zip`);
+  }
 }
 
 async function downloadAsZip(files, tabId) {
@@ -352,12 +409,8 @@ async function downloadAsZip(files, tabId) {
   }
 
   if (entries.length > 0) {
-    const parts = groupEntriesForZipParts(entries);
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    for (let i = 0; i < parts.length; i++) {
-      const suffix = parts.length > 1 ? `-part${i + 1}of${parts.length}` : "";
-      await downloadZipPart(parts[i], `${SUBFOLDER}/BulkPDFGrabber-${stamp}${suffix}.zip`);
-    }
+    await downloadEntriesAsZip(entries, stamp);
   }
 
   chrome.runtime.sendMessage({ type: "DOWNLOAD_COMPLETE", done, failed, failures, asZip: true }).catch(() => {});

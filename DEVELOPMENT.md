@@ -242,6 +242,33 @@ connected browser session. What that confirmed, and what's still inferred:
   simulated 523-file batch with realistic (1-10MB) file sizes — produced
   22 parts, each landing at or just under the 60MB cap.
 
+## v2.4.0: one real combined zip via an offscreen document
+
+- Splitting into parts (v2.3.4) worked, but wasn't what was actually
+  wanted — one real zip containing everything, not a dozen. The size limit
+  was never really about the zip itself; it was specifically a limitation
+  of turning it into one giant base64 *string* for a `data:` URL. A Blob
+  never needs to become a string at all, so the real fix is getting back
+  to something Blob-shaped — just not via `URL.createObjectURL()` in the
+  service worker, since that's what was missing in the first place
+  (v2.3.2).
+- Added `offscreen.html` / `offscreen.js`, using the `chrome.offscreen` API
+  (declared via the new `"offscreen"` permission) to spin up an invisible
+  extension page that — unlike the service worker — has a real DOM and
+  therefore does have `URL.createObjectURL`. `background.js` builds the
+  zip as before, sends the raw bytes to that page
+  (`OFFSCREEN_MAKE_BLOB_URL`), gets back a `blob:` URL, and passes that
+  straight to `chrome.downloads.download()` — the offscreen document and
+  the service worker are the same extension origin, so a blob URL created
+  in one is usable from the other. Revoked shortly after
+  (`OFFSCREEN_REVOKE_BLOB_URL`) once the download has had a moment to
+  start reading it.
+- The v2.3.4 split-into-parts path is kept as a fallback (`downloadEntries
+  AsZip()` tries the offscreen route first, falls back to it on any
+  failure — e.g. `chrome.offscreen` unsupported in some browser) rather
+  than removed, since it's a reasonable safety net and the two don't
+  conflict.
+
 ## Possible next features
 
 1. **Smarter filenames**: currently uses the link text, falling back to the
