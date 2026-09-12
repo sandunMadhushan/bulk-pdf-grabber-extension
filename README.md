@@ -25,7 +25,7 @@ all in one click — no more clicking "Save As" 15 times in a row.
 **From a downloaded release (manual install):**
 
 1. Download the latest `.zip` from the
-   [Releases page](https://github.com/YOUR_USERNAME/bulk-pdf-grabber/releases)
+   [Releases page](https://github.com/sandunMadhushan/bulk-pdf-grabber-extension/releases)
    and unzip it.
 2. Open `chrome://extensions` in Chrome.
 3. Turn on **Developer mode** (top right toggle).
