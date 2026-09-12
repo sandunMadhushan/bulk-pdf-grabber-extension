@@ -7,28 +7,29 @@ function scanPageForPdfs() {
     return clean.toLowerCase().endsWith(".pdf");
   }
 
-  // CONFIRMED against two live Moodle sites (different themes) that the
-  // file-type icon is NOT nested inside the resource <a> at all -- it's a
-  // sibling element several levels up, inside the shared per-activity
-  // container. Moodle wraps every course module (resource, assignment,
-  // forum, etc.) in a container whose class starts with "activity"
-  // regardless of theme/version -- classic themes use <li class="activity
-  // ...">, older Boost uses ".activityinstance", current Boost (4.x) uses
-  // ".activity-grid" / ".activity-item". Walking up to the nearest such
-  // container (rather than a fixed number of parentElement hops) is what
-  // makes this portable across themes.
-  function findActivityContainer(el) {
+  // CONFIRMED against a live Moodle 4.x/Boost course page (real console
+  // output) that class-name matching (anything starting with "activity")
+  // is NOT reliable: the title wrapper itself uses classes like
+  // "activityname" / "activitytitle", which also start with "activity" and
+  // sit BETWEEN the link and the actual shared container -- so matching by
+  // class prefix stops one or two levels too early, before ever reaching
+  // an ancestor that has the icon as a descendant. The icon
+  // (div.activity-icon) and the title (div.activity-name-area) are
+  // siblings under a common wrapper (div.activity-grid) several levels up;
+  // there's no reliable class name to target directly across themes, so
+  // instead walk up until an ancestor actually *contains* an <img>
+  // anywhere inside it -- structural, not name-based, so it isn't tripped
+  // up by any particular theme's class-naming scheme.
+  function findIconContainer(el) {
     let node = el;
     for (let d = 0; node && d < 10; d++, node = node.parentElement) {
-      if (node.classList && Array.from(node.classList).some((c) => /^activity/i.test(c))) {
-        return node;
-      }
+      if (node.querySelector && node.querySelector("img[src]")) return node;
     }
     return null;
   }
 
   function hasPdfIcon(a) {
-    const container = findActivityContainer(a) || a;
+    const container = findIconContainer(a) || a;
     const img = container.querySelector("img[src]");
     if (!img) return false;
     // Use the URL's pathname, not the raw src string -- Moodle's icon URLs

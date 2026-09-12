@@ -102,11 +102,25 @@ connected browser session. What that confirmed, and what's still inferred:
   screen-reader-only suffix (`<span class="accesshide"> File</span>`),
   which was leaking into suggested filenames -- `cleanLabel()` strips
   `.accesshide`/`.sr-only`/`.visually-hidden` elements before reading text.
-- **Still not verified**: this was confirmed on Moodle's Boost theme
-  (current, `.activity-grid` structure) on two sites. Very old Moodle
-  versions/themes (pre-Boost, using `<li class="activity">` markup with
-  the icon and link as closer siblings) should also work since
-  `findActivityContainer()` matches any class starting with "activity",
+- **v2.2.0's `findActivityContainer()` was still wrong, fixed in v2.2.1.**
+  Confirmed via real DOM markup from `lms.aps.rjt.ac.lk` (Moodle 4.x/Boost):
+  matching by "class name starts with `activity`" is unreliable because the
+  *title* wrapper itself uses classes like `activityname` and
+  `activitytitle`, which also start with `activity` and sit between the
+  link and the actual shared row container (`div.activity-grid`) — so the
+  walk-up stopped 2-3 levels too early, at a container that has no icon
+  inside it at all (the icon is a sibling of the title's container, not a
+  descendant of it). Result: `hasPdfIcon()` always returned false on this
+  site, `0 files found` even though every row clearly had a PDF icon.
+  Replaced with `findIconContainer()`, which ignores class names entirely
+  and instead walks up until it finds an ancestor that structurally
+  *contains* an `<img>` anywhere inside it — this doesn't depend on any
+  particular theme's naming scheme, so it should be robust across Moodle
+  versions/themes going forward.
+- **Still not verified**: confirmed on Moodle Boost (current, `.activity-grid`
+  structure) on two sites. Very old Moodle versions/themes (pre-Boost, using
+  `<li class="activity">` markup with the icon and link as closer siblings)
+  should also work with the new structural `findIconContainer()` approach,
   but haven't been checked directly.
 - **Cross-origin iframes**: if a PDF is embedded inside an `<iframe>` from a
   different domain, the script can usually still read its `src` attribute,
