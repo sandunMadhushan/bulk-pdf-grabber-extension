@@ -172,6 +172,27 @@ connected browser session. What that confirmed, and what's still inferred:
   from the zip and reported through the existing failures list/manual-open
   fallback, same as a failed individual download.
 
+## v2.3.1 / v2.3.2: zip download crashed silently, then found the real bug
+
+- **v2.3.1** exposed a design mistake: the `.catch()` wrapping the whole
+  download run reported a generic failure back to the popup but never
+  logged the actual error, so a real crash showed only as
+  "N files failed" with zero way to diagnose it. Added `console.error`
+  (top-level crash) / `console.warn` (per-file fetch failure) so the next
+  one would actually be visible in the service worker's console.
+- **v2.3.2**, with that logging in place, the real error surfaced on the
+  first retry: `TypeError: URL.createObjectURL is not a function`,
+  confirmed via a live test on Edge — its MV3 service worker context
+  doesn't expose `URL.createObjectURL`/`revokeObjectURL` the way Chrome's
+  does, and that's what `downloadAsZip()` was using to hand the built zip
+  Blob to `chrome.downloads.download()`. Replaced with a base64
+  `data:application/zip;base64,...` URL instead, which
+  `chrome.downloads.download()` accepts directly and doesn't depend on
+  that API at all. `String.fromCharCode.apply()` hits the call-stack limit
+  on large arrays, so the Blob's bytes are base64-encoded in 32KB chunks;
+  verified in Node that a ~2MB buffer round-trips through this chunked
+  encode/decode byte-for-byte before shipping it.
+
 ## Possible next features
 
 1. **Smarter filenames**: currently uses the link text, falling back to the

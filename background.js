@@ -285,7 +285,18 @@ async function downloadAsZip(files) {
   }
 
   if (entries.length > 0) {
-    const zipUrl = URL.createObjectURL(buildZip(entries));
+    // URL.createObjectURL is unavailable in some browsers' MV3 service
+    // worker context (confirmed missing in Edge) -- a base64 data: URL
+    // works everywhere chrome.downloads.download runs and needs no extra
+    // API. String.fromCharCode.apply chokes on very large arrays (call
+    // stack limit), so build the binary string in chunks first.
+    const zipBytes = new Uint8Array(await buildZip(entries).arrayBuffer());
+    let binary = "";
+    const CHUNK = 0x8000;
+    for (let i = 0; i < zipBytes.length; i += CHUNK) {
+      binary += String.fromCharCode.apply(null, zipBytes.subarray(i, i + CHUNK));
+    }
+    const zipUrl = `data:application/zip;base64,${btoa(binary)}`;
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     await new Promise((resolve) => {
       chrome.downloads.download(
@@ -293,7 +304,6 @@ async function downloadAsZip(files) {
         () => resolve()
       );
     });
-    setTimeout(() => URL.revokeObjectURL(zipUrl), 60000);
   }
 
   chrome.runtime.sendMessage({ type: "DOWNLOAD_COMPLETE", done, failed, failures, asZip: true }).catch(() => {});
