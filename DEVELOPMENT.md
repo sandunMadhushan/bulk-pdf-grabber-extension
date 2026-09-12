@@ -269,6 +269,28 @@ connected browser session. What that confirmed, and what's still inferred:
   than removed, since it's a reasonable safety net and the two don't
   conflict.
 
+## v2.4.1: sending the zip bytes in one message also failed
+
+- v2.4.0's `OFFSCREEN_MAKE_BLOB_URL` sent the entire zip's raw bytes to the
+  offscreen document in a single `chrome.runtime.sendMessage()` call.
+  Confirmed live on the 523-file batch: that call itself failed outright --
+  `Error in invocation of runtime.sendMessage(...): Could not serialize
+  message` -- extension messaging has its own hard limit independent of
+  the string-length problem v2.4.0 was solving, and a ~60MB+ payload blew
+  past it.
+- Fixed by streaming the bytes over in small pieces instead of one message:
+  `background.js` slices the zip into `ZIP_TRANSFER_CHUNK_BYTES` (4MB)
+  pieces, base64-encodes each individually (small enough to never risk the
+  v2.3.4 string-length problem), and sends a sequence of
+  `OFFSCREEN_ZIP_BEGIN` → `OFFSCREEN_ZIP_CHUNK` (× N) →
+  `OFFSCREEN_ZIP_FINISH` messages. `offscreen.js` collects the decoded
+  chunks into a plain array and only calls `new Blob(chunks)` at the very
+  end -- `Blob`'s constructor accepts an array of parts directly, so
+  nothing on either side ever needs to become one giant string, one giant
+  typed array, or one giant message. Verified in Node that a `Blob` built
+  from several small `Uint8Array` chunks reassembles byte-for-byte
+  correctly.
+
 ## Possible next features
 
 1. **Smarter filenames**: currently uses the link text, falling back to the

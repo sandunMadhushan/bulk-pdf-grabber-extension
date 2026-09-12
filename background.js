@@ -315,15 +315,42 @@ async function ensureOffscreenDocument() {
   await offscreenDocumentReady;
 }
 
+// Sending the whole zip as raw bytes in one runtime.sendMessage call turned
+// out to hit its own hard wall too -- confirmed live: "Error in invocation
+// of runtime.sendMessage(...): Could not serialize message" for a ~60MB
+// payload. So the bytes are streamed over as a sequence of small base64
+// chunks instead; the offscreen document collects them into an array and
+// only calls `new Blob(chunks)` at the end -- the Blob constructor accepts
+// an array of parts directly, so nothing here ever needs to become one
+// giant string or one giant message.
+const ZIP_TRANSFER_CHUNK_BYTES = 4 * 1024 * 1024; // 4MB raw per message
+
+function bytesToBase64(bytes) {
+  let binary = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
+}
+
 async function downloadZipViaOffscreen(entries, filename) {
   const zipBytes = new Uint8Array(await buildZip(entries).arrayBuffer());
   await ensureOffscreenDocument();
+
+  const transferId = `zip-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  await chrome.runtime.sendMessage({ type: "OFFSCREEN_ZIP_BEGIN", transferId });
+  for (let i = 0; i < zipBytes.length; i += ZIP_TRANSFER_CHUNK_BYTES) {
+    const slice = zipBytes.subarray(i, i + ZIP_TRANSFER_CHUNK_BYTES);
+    await chrome.runtime.sendMessage({ type: "OFFSCREEN_ZIP_CHUNK", transferId, base64: bytesToBase64(slice) });
+  }
   const response = await chrome.runtime.sendMessage({
-    type: "OFFSCREEN_MAKE_BLOB_URL",
-    bytes: zipBytes,
+    type: "OFFSCREEN_ZIP_FINISH",
+    transferId,
     mimeType: "application/zip",
   });
   if (!response || !response.url) throw new Error("offscreen document did not return a blob URL");
+
   await new Promise((resolve) => {
     chrome.downloads.download({ url: response.url, filename, saveAs: false, conflictAction: "uniquify" }, () => resolve());
   });
@@ -361,12 +388,7 @@ function groupEntriesForZipParts(entries) {
 
 async function downloadZipPartViaDataUrl(entries, filename) {
   const zipBytes = new Uint8Array(await buildZip(entries).arrayBuffer());
-  let binary = "";
-  const CHUNK = 0x8000;
-  for (let i = 0; i < zipBytes.length; i += CHUNK) {
-    binary += String.fromCharCode.apply(null, zipBytes.subarray(i, i + CHUNK));
-  }
-  const zipUrl = `data:application/zip;base64,${btoa(binary)}`;
+  const zipUrl = `data:application/zip;base64,${bytesToBase64(zipBytes)}`;
   await new Promise((resolve) => {
     chrome.downloads.download({ url: zipUrl, filename, saveAs: false, conflictAction: "uniquify" }, () => resolve());
   });
