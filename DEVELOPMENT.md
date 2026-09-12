@@ -89,6 +89,25 @@ connected browser session. What that confirmed, and what's still inferred:
   folder icon) aren't expanded — they contain multiple files behind a
   second page, out of scope for the current icon-based single-link
   detection. Worth a v3 feature if these come up often.
+- **v2.1.0's Moodle icon detection was wrong, fixed in v2.2.0.** Confirmed
+  against two live sites (`oulms.ou.ac.lk` and `lms.aps.rjt.ac.lk`, different
+  Moodle themes) that the icon is never nested inside the resource `<a>` --
+  it's a sibling several DOM levels up, inside a shared per-activity
+  container (class starting with `activity`, e.g. `.activity-grid` on
+  current Boost). `hasPdfIcon()` now walks up to that container before
+  searching for the icon, instead of only looking inside the link. Also
+  fixed: the icon `src` can carry a query string (`.../f/pdf?filtericon=1`)
+  that the old regex, applied to the raw `src`, didn't handle -- now checks
+  `new URL(src).pathname` instead. And: link text can include Moodle's
+  screen-reader-only suffix (`<span class="accesshide"> File</span>`),
+  which was leaking into suggested filenames -- `cleanLabel()` strips
+  `.accesshide`/`.sr-only`/`.visually-hidden` elements before reading text.
+- **Still not verified**: this was confirmed on Moodle's Boost theme
+  (current, `.activity-grid` structure) on two sites. Very old Moodle
+  versions/themes (pre-Boost, using `<li class="activity">` markup with
+  the icon and link as closer siblings) should also work since
+  `findActivityContainer()` matches any class starting with "activity",
+  but haven't been checked directly.
 - **Cross-origin iframes**: if a PDF is embedded inside an `<iframe>` from a
   different domain, the script can usually still read its `src` attribute,
   but it can't reach into the iframe's own DOM — so PDFs linked *inside*

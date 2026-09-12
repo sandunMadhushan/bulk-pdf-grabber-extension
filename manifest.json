@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Bulk PDF Grabber",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Scan the current page (or Google Classroom / Moodle) for PDF links and download the ones you choose in one click.",
   "author": "Sandun Madhushan",
   "homepage_url": "https://github.com/YOUR_USERNAME/bulk-pdf-grabber",

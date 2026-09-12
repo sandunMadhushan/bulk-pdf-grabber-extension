@@ -1,4 +1,4 @@
-// ---- Generic page scan (v1 behavior, extended in v2.1 for LMS pages) ----
+// ---- Generic page scan (v1 behavior, extended in v2.1/2.2 for LMS pages) --
 // Runs inside the target page. Must be fully self-contained (no outside
 // references) because chrome.scripting.executeScript injects it as-is.
 function scanPageForPdfs() {
@@ -7,19 +7,51 @@ function scanPageForPdfs() {
     return clean.toLowerCase().endsWith(".pdf");
   }
 
-  // Moodle (and similar LMS platforms) don't link directly to the file --
-  // they link to a wrapper page like "mod/resource/view.php?id=123" that
-  // redirects to the real PDF. The URL alone gives no clue it's a PDF, but
-  // Moodle marks the file type with a dedicated icon next to the link
-  // (theme path contains "/f/pdf...", e.g. ".../f/pdf-24" or
-  // ".../f/pdf.svg", often with alt text like "PDF file"). Treat that icon
-  // as a second, independent signal alongside the URL check above.
+  // CONFIRMED against two live Moodle sites (different themes) that the
+  // file-type icon is NOT nested inside the resource <a> at all -- it's a
+  // sibling element several levels up, inside the shared per-activity
+  // container. Moodle wraps every course module (resource, assignment,
+  // forum, etc.) in a container whose class starts with "activity"
+  // regardless of theme/version -- classic themes use <li class="activity
+  // ...">, older Boost uses ".activityinstance", current Boost (4.x) uses
+  // ".activity-grid" / ".activity-item". Walking up to the nearest such
+  // container (rather than a fixed number of parentElement hops) is what
+  // makes this portable across themes.
+  function findActivityContainer(el) {
+    let node = el;
+    for (let d = 0; node && d < 10; d++, node = node.parentElement) {
+      if (node.classList && Array.from(node.classList).some((c) => /^activity/i.test(c))) {
+        return node;
+      }
+    }
+    return null;
+  }
+
   function hasPdfIcon(a) {
-    const img = a.querySelector("img");
+    const container = findActivityContainer(a) || a;
+    const img = container.querySelector("img[src]");
     if (!img) return false;
-    const src = img.src || img.getAttribute("src") || "";
+    // Use the URL's pathname, not the raw src string -- Moodle's icon URLs
+    // often carry a query string (e.g. ".../f/pdf?filtericon=1") that a
+    // plain substring/regex check on the full src can trip over.
+    let path;
+    try {
+      path = new URL(img.src, location.href).pathname;
+    } catch (e) {
+      path = img.src || "";
+    }
+    if (/\/f\/pdf(?:[-_.]|$)/i.test(path)) return true;
     const alt = (img.alt || "").toLowerCase();
-    return /\/f\/pdf(?:[-_.]|$)/i.test(src) || /\bpdf\b/i.test(alt);
+    return /\bpdf\b/i.test(alt);
+  }
+
+  // Moodle appends screen-reader-only text to activity links (e.g.
+  // `<span class="accesshide"> File</span>`), which would otherwise leak
+  // into the suggested filename as a trailing "File"/"Folder"/etc.
+  function cleanLabel(a) {
+    const clone = a.cloneNode(true);
+    clone.querySelectorAll(".accesshide, .sr-only, .visually-hidden").forEach((n) => n.remove());
+    return clone.textContent.replace(/\s+/g, " ").trim();
   }
 
   const found = new Map();
@@ -31,7 +63,7 @@ function scanPageForPdfs() {
     } catch (e) {
       return; // ignore malformed URLs
     }
-    const label = (a.textContent || "").trim();
+    const label = cleanLabel(a);
     if (isPdfUrl(url)) {
       found.set(url, label || decodeURIComponent(url.split("/").pop()));
     } else if (label && hasPdfIcon(a)) {
