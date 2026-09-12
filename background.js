@@ -292,6 +292,45 @@ async function fetchFileBytesInTab(tabId, file) {
   return { ok: false, reason: lastReason };
 }
 
+// A base64 data: URL works everywhere chrome.downloads.download runs (no
+// URL.createObjectURL needed -- see the v2.3.2 note above), but it doesn't
+// scale to a large combined zip: turning the whole thing into one giant JS
+// string blows past the engine's max string length (confirmed live: 523
+// real PDFs -- several hundred MB combined -- threw "RangeError: Invalid
+// string length" here). So entries are grouped into multiple zip parts,
+// each capped well under that limit, downloaded one at a time.
+const MAX_ZIP_PART_BYTES = 60 * 1024 * 1024; // ~60MB of file data per zip part
+
+function groupEntriesForZipParts(entries) {
+  const groups = [];
+  let current = [];
+  let currentSize = 0;
+  for (const entry of entries) {
+    if (current.length > 0 && currentSize + entry.data.length > MAX_ZIP_PART_BYTES) {
+      groups.push(current);
+      current = [];
+      currentSize = 0;
+    }
+    current.push(entry);
+    currentSize += entry.data.length;
+  }
+  if (current.length > 0) groups.push(current);
+  return groups;
+}
+
+async function downloadZipPart(entries, filename) {
+  const zipBytes = new Uint8Array(await buildZip(entries).arrayBuffer());
+  let binary = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < zipBytes.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, zipBytes.subarray(i, i + CHUNK));
+  }
+  const zipUrl = `data:application/zip;base64,${btoa(binary)}`;
+  await new Promise((resolve) => {
+    chrome.downloads.download({ url: zipUrl, filename, saveAs: false, conflictAction: "uniquify" }, () => resolve());
+  });
+}
+
 async function downloadAsZip(files, tabId) {
   let done = 0;
   let failed = 0;
@@ -313,25 +352,12 @@ async function downloadAsZip(files, tabId) {
   }
 
   if (entries.length > 0) {
-    // URL.createObjectURL is unavailable in some browsers' MV3 service
-    // worker context (confirmed missing in Edge) -- a base64 data: URL
-    // works everywhere chrome.downloads.download runs and needs no extra
-    // API. String.fromCharCode.apply chokes on very large arrays (call
-    // stack limit), so build the binary string in chunks first.
-    const zipBytes = new Uint8Array(await buildZip(entries).arrayBuffer());
-    let binary = "";
-    const CHUNK = 0x8000;
-    for (let i = 0; i < zipBytes.length; i += CHUNK) {
-      binary += String.fromCharCode.apply(null, zipBytes.subarray(i, i + CHUNK));
-    }
-    const zipUrl = `data:application/zip;base64,${btoa(binary)}`;
+    const parts = groupEntriesForZipParts(entries);
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    await new Promise((resolve) => {
-      chrome.downloads.download(
-        { url: zipUrl, filename: `${SUBFOLDER}/BulkPDFGrabber-${stamp}.zip`, saveAs: false, conflictAction: "uniquify" },
-        () => resolve()
-      );
-    });
+    for (let i = 0; i < parts.length; i++) {
+      const suffix = parts.length > 1 ? `-part${i + 1}of${parts.length}` : "";
+      await downloadZipPart(parts[i], `${SUBFOLDER}/BulkPDFGrabber-${stamp}${suffix}.zip`);
+    }
   }
 
   chrome.runtime.sendMessage({ type: "DOWNLOAD_COMPLETE", done, failed, failures, asZip: true }).catch(() => {});

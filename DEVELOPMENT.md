@@ -221,6 +221,27 @@ connected browser session. What that confirmed, and what's still inferred:
   background-page fetch for *that* case specifically) rather than reusing
   this tab-injection trick.
 
+## v2.3.4: one giant zip doesn't scale, split into size-capped parts
+
+- With the fetch itself finally working (v2.3.3), the *same* 523-file
+  Moodle page hit a new wall: `RangeError: Invalid string length` inside
+  `downloadAsZip()`. Combining ~500 real PDFs (several hundred MB total)
+  into one zip, then that whole zip into one base64 string for the
+  `data:` URL, blows past the JS engine's max string length — this was
+  never going to scale no matter how the per-file base64 chunking was
+  tuned, because the *final* concatenation is what's unbounded, not the
+  per-chunk size.
+- Fixed by not building one zip at all: `groupEntriesForZipParts()` splits
+  the fetched entries into groups capped at `MAX_ZIP_PART_BYTES` (60MB of
+  uncompressed file data each — comfortably under the string-length limit
+  even after base64 inflates it by ~33%), and `downloadZipPart()` builds
+  and downloads each group as its own `.zip`, sequentially. Below the cap
+  (the common case), this is unchanged — one file: `BulkPDFGrabber-
+  <timestamp>.zip`. Above it: `BulkPDFGrabber-<timestamp>-part1of3.zip`,
+  `-part2of3.zip`, etc. Verified the grouping logic in Node against a
+  simulated 523-file batch with realistic (1-10MB) file sizes — produced
+  22 parts, each landing at or just under the 60MB cap.
+
 ## Possible next features
 
 1. **Smarter filenames**: currently uses the link text, falling back to the

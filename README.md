@@ -15,7 +15,9 @@ all in one click — no more clicking "Save As" 15 times in a row.
 - Tick individual files, or use **Select All**
 - Filter the list by filename, or (on Classroom) by file type
 - **Downloading 10+ files from a regular page (not Classroom) bundles them
-  into a single `.zip`** instead of triggering that many separate downloads
+  into `.zip` file(s)** instead of triggering that many separate downloads
+  — a very large batch is split across a few zip parts so each stays a
+  manageable size
 - Downloads go into a `BulkPDFGrabber/` folder inside your normal Downloads
   folder, organized into a subfolder per class when scanning Classroom
 - Nothing is uploaded anywhere — everything happens locally in your browser
@@ -42,8 +44,8 @@ all in one click — no more clicking "Save As" 15 times in a row.
 4. Uncheck anything you don't want, or use the filter box to narrow the list.
 5. Click **Download selected**.
 6. Files will appear in `Downloads/BulkPDFGrabber/` — as individual files,
-   or (on a regular page, not Classroom) as a single `.zip` if you selected
-   10 or more.
+   or (on a regular page, not Classroom) as one or more `.zip` files if you
+   selected 10 or more.
 
 If PDFs load onto the page after you've already opened the popup (e.g. on an
 infinite-scroll page), click the ⟳ button to rescan.
