@@ -14,10 +14,8 @@ all in one click — no more clicking "Save As" 15 times in a row.
   that auto-expands and scrolls the page to catch lazy-loaded content
 - Tick individual files, or use **Select All**
 - Filter the list by filename, or (on Classroom) by file type
-- **Downloading 10+ files bundles them into a single `.zip`** instead of
-  triggering that many separate downloads — asks for one-time permission to
-  read the file bytes the first time, and falls back to individual
-  downloads if you decline
+- **Downloading 10+ files from a regular page (not Classroom) bundles them
+  into a single `.zip`** instead of triggering that many separate downloads
 - Downloads go into a `BulkPDFGrabber/` folder inside your normal Downloads
   folder, organized into a subfolder per class when scanning Classroom
 - Nothing is uploaded anywhere — everything happens locally in your browser
@@ -44,7 +42,8 @@ all in one click — no more clicking "Save As" 15 times in a row.
 4. Uncheck anything you don't want, or use the filter box to narrow the list.
 5. Click **Download selected**.
 6. Files will appear in `Downloads/BulkPDFGrabber/` — as individual files,
-   or as a single `.zip` if you selected 10 or more.
+   or (on a regular page, not Classroom) as a single `.zip` if you selected
+   10 or more.
 
 If PDFs load onto the page after you've already opened the popup (e.g. on an
 infinite-scroll page), click the ⟳ button to rescan.
@@ -60,11 +59,10 @@ infinite-scroll page), click the ⟳ button to rescan.
 - **Downloads**: used to save the files you select to your computer.
 - **Storage**: used to briefly cache the list of files found on a Classroom
   page so switching tabs and back doesn't lose your scan.
-- **Optional host permission (requested on demand)**: only asked for when
-  you download 10+ files at once, to read those specific files' bytes so
-  they can be bundled into a `.zip`. It's a normal Chrome permission prompt
-  triggered by that click — decline it and the extension just downloads the
-  files individually instead.
+
+Zip-bundling (10+ files on a regular page) doesn't need any extra
+permission beyond the above — it reads the files from inside the page you
+already scanned, the same way the page's own scripts could.
 
 This extension does not collect, store, or transmit any personal data to any
 server. All scanning and downloading happens entirely on your own device,

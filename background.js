@@ -232,39 +232,67 @@ async function downloadIndividually(files) {
   chrome.runtime.sendMessage({ type: "DOWNLOAD_COMPLETE", done, failed, failures, asZip: false }).catch(() => {});
 }
 
-// Bundling requires the actual bytes (not just triggering a save-to-disk),
-// so this path uses fetch() instead of chrome.downloads.download() -- it
-// relies on the caller having already obtained (via chrome.permissions.
-// request, prompted by the popup right before sending this message) host
-// permission for the relevant origins, since a background-page fetch to a
-// cross-origin URL without that permission would just fail/opaque-response.
-async function fetchFileBytes(file) {
+// Bundling requires the actual bytes (not just triggering a save-to-disk).
+// A background-page fetch() to a cross-origin URL turned out to be
+// unreliable -- confirmed on a live test (every single fetch failed with a
+// generic "TypeError: Failed to fetch", even after the caller had been
+// granted the "<all_urls>" optional host permission via chrome.permissions.
+// request). Rather than chase that further, this runs the fetch *inside the
+// target tab itself* via chrome.scripting.executeScript -- since zip mode
+// only ever bundles items that came from scanning that same tab (see the
+// mode === "generic" check in popup.js), the file is always same-origin to
+// the page, so this is exactly like the page fetching its own file: no
+// CORS issue, no extra permission prompt, just the activeTab/scripting
+// access the extension already has.
+async function fetchBytesInPage(url) {
+  try {
+    const res = await fetch(url, { credentials: "include" });
+    if (!res.ok) return { ok: false, reason: `http-${res.status}` };
+    const contentType = res.headers.get("content-type") || "";
+    if (contentType.startsWith("text/html")) return { ok: false, reason: "interstitial" };
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    // Returned through chrome.scripting's structured-clone boundary as a
+    // base64 string rather than the raw bytes -- simplest thing that's
+    // guaranteed to survive that boundary intact for large files.
+    let binary = "";
+    const CHUNK = 0x8000;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+    }
+    return { ok: true, base64: btoa(binary) };
+  } catch (e) {
+    return { ok: false, reason: "fetch-failed" };
+  }
+}
+
+function base64ToBytes(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+async function fetchFileBytesInTab(tabId, file) {
   const urls = candidateUrls(file);
   let lastReason = "no-candidates";
   for (const url of urls) {
     try {
-      const res = await fetch(url, { credentials: "include" });
-      if (!res.ok) {
-        lastReason = `http-${res.status}`;
-        continue;
-      }
-      const contentType = res.headers.get("content-type") || "";
-      if (contentType.startsWith("text/html")) {
-        // Same interstitial signal as the individual-download path.
-        lastReason = "interstitial";
-        continue;
-      }
-      const data = new Uint8Array(await res.arrayBuffer());
-      return { ok: true, data };
+      const [{ result }] = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: fetchBytesInPage,
+        args: [url],
+      });
+      if (result && result.ok) return { ok: true, data: base64ToBytes(result.base64) };
+      lastReason = (result && result.reason) || "inject-failed";
     } catch (e) {
-      console.warn("Bulk PDF Grabber: fetch failed for", url, e);
-      lastReason = "fetch-failed";
+      console.warn("Bulk PDF Grabber: in-page fetch failed for", url, e);
+      lastReason = "inject-failed";
     }
   }
   return { ok: false, reason: lastReason };
 }
 
-async function downloadAsZip(files) {
+async function downloadAsZip(files, tabId) {
   let done = 0;
   let failed = 0;
   const failures = [];
@@ -272,7 +300,7 @@ async function downloadAsZip(files) {
   const used = new Set();
 
   for (const file of files) {
-    const result = await fetchFileBytes(file);
+    const result = await fetchFileBytesInTab(tabId, file);
     if (result.ok) {
       const folder = file.classFolder ? `${file.classFolder}/` : "";
       entries.push({ name: uniqueZipName(used, folder + file.filename), data: result.data });
@@ -313,7 +341,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type !== "DOWNLOAD_PDFS") return;
 
   const files = message.files || [];
-  (message.asZip ? downloadAsZip(files) : downloadIndividually(files)).catch((e) => {
+  (message.asZip ? downloadAsZip(files, message.tabId) : downloadIndividually(files)).catch((e) => {
     console.error("Bulk PDF Grabber: download run crashed", e);
     chrome.runtime
       .sendMessage({ type: "DOWNLOAD_COMPLETE", done: 0, failed: files.length, failures: [], asZip: !!message.asZip })

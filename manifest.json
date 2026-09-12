@@ -1,13 +1,12 @@
 {
   "manifest_version": 3,
   "name": "Bulk PDF Grabber",
-  "version": "2.3.2",
+  "version": "2.3.3",
   "description": "Scan the current page (or Google Classroom / Moodle) for PDF links and download the ones you choose in one click.",
   "author": "Sandun Madhushan",
   "homepage_url": "https://github.com/sandunMadhushan/bulk-pdf-grabber-extension",
   "permissions": ["activeTab", "scripting", "downloads", "storage"],
   "host_permissions": ["https://classroom.google.com/*"],
-  "optional_host_permissions": ["<all_urls>"],
   "content_scripts": [
     {
       "matches": ["https://classroom.google.com/*"],

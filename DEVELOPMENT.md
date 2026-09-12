@@ -143,18 +143,12 @@ connected browser session. What that confirmed, and what's still inferred:
   triggering N separate downloads. Below that threshold, behavior is
   unchanged (N individual downloads via `chrome.downloads.download`, as
   before).
-- Bundling needs the actual file *bytes*, not just a save-to-disk trigger,
-  so `background.js` uses `fetch()` for this path instead of
-  `chrome.downloads.download()`. A background-page fetch to a cross-origin
-  URL needs host permission for that origin or it fails/returns an opaque
-  response — and the possible origins aren't knowable ahead of time (any
-  LMS domain, plus Drive/Docs export endpoints for Classroom) — so
-  `"<all_urls>"` is declared as `optional_host_permissions` in
-  manifest.json, and `popup.js` requests it via `chrome.permissions.request`
-  right when the user clicks Download with 10+ files selected (must be a
-  direct result of the click for Chrome to show the prompt). If the user
-  denies it, this falls back to the normal per-file download path rather
-  than failing outright.
+- Bundling needs the actual file *bytes*, not just a save-to-disk trigger.
+  Zip mode is therefore only offered for generic-page scans
+  (`mode === "generic"` in popup.js, which covers Moodle/any non-Classroom
+  page) — Classroom keeps using the existing per-file
+  `chrome.downloads.download()` path unconditionally, regardless of how
+  many files are selected. See v2.3.3 below for why.
 - The ZIP itself is written by hand in `background.js` (`buildZip()` /
   `crc32()` / `dosDateTime()`) using the "store" (no compression) method —
   no external library. Two reasons: MV3 extensions can't load remote code
@@ -192,6 +186,40 @@ connected browser session. What that confirmed, and what's still inferred:
   on large arrays, so the Blob's bytes are base64-encoded in 32KB chunks;
   verified in Node that a ~2MB buffer round-trips through this chunked
   encode/decode byte-for-byte before shipping it.
+
+## v2.3.3: background-page fetch() was unreliable, moved into the tab
+
+- Even after fixing the `URL.createObjectURL` crash, a live retry on the
+  original 523-file Moodle course page showed **every single** `fetch()`
+  from the background service worker failing with a generic
+  `TypeError: Failed to fetch` — this was fetching cross-origin using the
+  `"<all_urls>"` optional host permission from v2.3.0, granted via
+  `chrome.permissions.request()` right before sending the download message.
+  Rather than keep chasing why that specific combination doesn't work
+  (suspected Edge-specific quirk, unconfirmed), replaced the whole approach:
+  `background.js` now runs the fetch *inside the scanned tab itself* via
+  `chrome.scripting.executeScript()` (`fetchBytesInPage()`, injected;
+  result relayed back as a base64 string, decoded with `base64ToBytes()`).
+  Since the PDF is always same-origin to the tab it was scanned from, this
+  is exactly like the page fetching its own file — no CORS issue, and no
+  extra permission prompt, just the `activeTab`/`scripting` access the
+  extension already had.
+- The tradeoff: this only works for files that are same-origin to the
+  scanned tab. That's true for every generic/Moodle item (scanned directly
+  off the page), but not for Classroom's Drive/Docs export URLs, which are
+  cross-origin to the `classroom.google.com` tab they were scanned from —
+  injecting into that tab wouldn't help, since a page's own script hitting
+  a different origin hits the same CORS wall. So zip mode is now gated on
+  `mode === "generic"` in `popup.js` — Classroom always uses the existing
+  per-file download path, unaffected by any of this. `"<all_urls>"` /
+  `optional_host_permissions` and the `chrome.permissions.request()` call
+  were removed entirely — no longer needed, and one less scary permission
+  prompt for users to see.
+- If Classroom zip-bundling is wanted later, it'd need its own approach
+  (e.g. request permission scoped to just `drive.google.com` /
+  `docs.google.com` / `drive.usercontent.google.com` and go back to a
+  background-page fetch for *that* case specifically) rather than reusing
+  this tab-injection trick.
 
 ## Possible next features
 

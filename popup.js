@@ -332,31 +332,17 @@ typeChipsEl.addEventListener("click", (e) => {
   updateFooterAndSelectAll();
 });
 
-// 10+ files download as a single .zip instead of N separate files -- needs
-// the actual bytes (not just a save-to-disk trigger), so background.js has
-// to fetch() them, which needs host permission for wherever they're hosted.
-// Origins vary per page (any LMS domain, or Drive/Docs export endpoints for
-// Classroom), so this is requested on demand right here -- must happen
-// synchronously in response to the click for Chrome to allow the prompt.
+// 10+ files download as a single .zip instead of N separate files. Bundling
+// needs the actual bytes, not just a save-to-disk trigger -- background.js
+// gets those by running a fetch() *inside the scanned tab* (via
+// chrome.scripting.executeScript), so the file has to be same-origin to
+// that tab or it'd hit the same cross-origin restrictions a page's own
+// script would. That's only guaranteed for generic-page (incl. Moodle)
+// items, which is exactly what `mode === "generic"` covers -- Classroom
+// items point at drive.google.com/docs.google.com, a different origin from
+// the classroom.google.com tab they were scanned from, so those keep using
+// the existing per-file chrome.downloads.download() path unconditionally.
 const ZIP_THRESHOLD = 10;
-
-function originsForPayloads(payloads) {
-  const origins = new Set();
-  payloads.forEach((p) => {
-    if (p.url) {
-      try {
-        origins.add(`${new URL(p.url).origin}/*`);
-      } catch (e) {
-        /* ignore */
-      }
-    } else if (p.type) {
-      origins.add("https://drive.google.com/*");
-      origins.add("https://drive.usercontent.google.com/*");
-      origins.add("https://docs.google.com/*");
-    }
-  });
-  return Array.from(origins);
-}
 
 downloadBtn.addEventListener("click", async () => {
   const selected = items.filter((it) => it.selected);
@@ -365,21 +351,12 @@ downloadBtn.addEventListener("click", async () => {
   failuresBox.classList.add("hidden");
 
   const payloads = selected.map((it) => it.payload);
-  let asZip = false;
-
-  if (selected.length >= ZIP_THRESHOLD) {
-    statusEl.textContent = "Requesting permission to bundle as a zip…";
-    try {
-      asZip = await chrome.permissions.request({ origins: originsForPayloads(payloads) });
-    } catch (e) {
-      asZip = false;
-    }
-  }
+  const asZip = mode === "generic" && selected.length >= ZIP_THRESHOLD;
 
   statusEl.textContent = asZip
     ? `Fetching 0 / ${selected.length} for zip…`
     : `Downloading 0 / ${selected.length}…`;
-  chrome.runtime.sendMessage({ type: "DOWNLOAD_PDFS", files: payloads, asZip }, () => {});
+  chrome.runtime.sendMessage({ type: "DOWNLOAD_PDFS", files: payloads, asZip, tabId: activeTabId }, () => {});
 });
 
 chrome.runtime.onMessage.addListener((msg, sender) => {
