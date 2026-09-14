@@ -22,7 +22,7 @@ all in one click — no more clicking "Save As" 15 times in a row.
 
 ## Install
 
-**From the Chrome Web Store:** *(link goes here once published)*
+**From the Chrome Web Store:** *https://chrome.google.com/webstore/detail/cmjbfibedfkdkbcgejopcmhdbmnijkkk*
 
 **From a downloaded release (manual install):**
 
